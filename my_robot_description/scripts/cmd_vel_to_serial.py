@@ -13,7 +13,8 @@ class JoyToSerialNode(Node):
         
         # 1. Kết nối cổng Serial với Arduino
         try:
-            self.serial_port = serial.Serial('/dev/ttyACM0', 115200, timeout=0.1)
+            ARDUINO_PORT = '/dev/serial/by-id/usb-Arduino__www.arduino.cc__0042_55137313931351015011-if00'
+            self.serial_port = serial.Serial(ARDUINO_PORT, 115200, timeout=0.1)
             self.get_logger().info("Đã mở cổng Serial Arduino thành công!")
         except serial.SerialException as e:
             self.get_logger().error(f"Không thể kết nối Serial với Arduino: {e}")

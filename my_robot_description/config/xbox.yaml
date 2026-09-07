@@ -1,0 +1,23 @@
+teleop_twist_joy_node:
+  ros__parameters:
+    # tat yeu cau giu nut L1
+    require_enable_button: false
+    
+    # cau hinh can analog
+    axis_linear:
+      x: 1
+    axis_angular:
+      yaw: 0
+      
+    # Tốc độ mặc định (m/s và rad/s)
+    scale_linear:
+      x: 0.5
+    scale_angular:
+      yaw: 0.5
+      
+    # nut R1 - Giữ để tăng tốc
+    enable_turbo_button: 5
+    scale_linear_turbo:
+      x: 1.0
+    scale_angular_turbo:
+      yaw: 1.0

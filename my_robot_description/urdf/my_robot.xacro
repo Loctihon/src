@@ -1,0 +1,105 @@
+<?xml version="1.0" ?>
+<robot name="my_robot" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+<xacro:include filename="$(find my_robot_description)/urdf/materials.xacro" />
+<xacro:include filename="$(find my_robot_description)/urdf/my_robot.trans" />
+<xacro:include filename="$(find my_robot_description)/urdf/my_robot.gazebo" />
+<xacro:include filename="$(find my_robot_description)/urdf/inertial_macros.xacro" />
+<xacro:include filename="$(find my_robot_description)/urdf/ros2_control.xacro" />
+<xacro:include filename="$(find my_robot_description)/urdf/lidar.xacro" />
+
+
+
+<!-- BASE FOOTPRINT LINK -->
+
+<link name="base_footprint">
+  <origin xyz="0 0 0" rpy="0 0 0"/>
+</link>
+
+
+<!-- BASE LINK -->
+
+<link name="base_link">
+  <xacro:inertial_box mass="40" x="0.92" y="0.72" z="0.551">
+      <origin xyz="0 0 0.2755" rpy="0 0 0"/>
+  </xacro:inertial_box>
+  <visual>
+    <origin xyz="0 0 0" rpy="0 0 3.14159"/>
+    <geometry>
+      <mesh filename="file://$(find my_robot_description)/meshes/base_link.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+    <material name="silver"/>
+  </visual>
+  <collision>
+    <origin xyz="0 0 0" rpy="0 0 3.14159"/>
+    <geometry>
+      <mesh filename="file://$(find my_robot_description)/meshes/base_link.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+  </collision>
+</link>
+
+<joint name="base_link_to_base_footprint_link" type="fixed">
+  <parent link="base_footprint"/>
+  <child link="base_link"/>
+  <origin xyz="0 0 0" rpy="0 0 0"/>
+</joint>
+
+
+<!-- RIGHT WHEEL LINK -->
+
+<link name="right_wheel_1">
+  <xacro:inertial_cylinder mass="4.5" length="0.05" radius="0.10795">
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+  </xacro:inertial_cylinder>
+  <visual>
+    <origin xyz="0.0 0.2175 -0.108014" rpy="0 0 3.14159"/>
+    <geometry>
+      <mesh filename="file://$(find my_robot_description)/meshes/right_wheel_1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+    <material name="silver"/>
+  </visual>
+  <collision>
+    <origin xyz="0 0 0" rpy="0 0 3.14159"/>
+    <geometry>
+      <sphere radius="0.10890"/>
+    </geometry>
+  </collision>
+</link>
+
+<joint name="right_wheel_to_base_link" type="continuous">
+  <origin xyz="0.0 -0.2175 0.108014" rpy="0 0 0"/>
+  <parent link="base_link"/>
+  <child link="right_wheel_1"/>
+  <axis xyz="0.0 1.0 0.0"/>
+</joint>
+
+
+<!-- LEFT WHEEL LINK -->
+
+<link name="left_wheel_1">
+  <xacro:inertial_cylinder mass="4.5" length="0.05" radius="0.10795">
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </xacro:inertial_cylinder>
+  <visual>
+    <origin xyz="0.0 -0.2175 -0.108014" rpy="0 0 3.14159"/>
+    <geometry>
+      <mesh filename="file://$(find my_robot_description)/meshes/left_wheel_1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+    <material name="silver"/>
+  </visual>
+  <collision>
+    <origin xyz="0.0 0 0" rpy="0 0 3.14159"/>
+    <geometry>
+      <sphere radius="0.10890"/>
+    </geometry>
+  </collision>
+</link>
+
+<joint name="left_wheel_to_base_link" type="continuous">
+  <origin xyz="0.0 0.2175 0.108014" rpy="0 0 0"/>
+  <parent link="base_link"/>
+  <child link="left_wheel_1"/>
+  <axis xyz="0.0 1.0 0.0"/>
+</joint>
+
+</robot>

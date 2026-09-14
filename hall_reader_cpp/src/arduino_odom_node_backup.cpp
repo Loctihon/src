@@ -1,5 +1,5 @@
 #include <rclcpp/rclcpp.hpp>
-#include <geometry_msgs/msg/twist.hpp>
+#include <sensor_msgs/msg/joy.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include <tf2/LinearMath/Quaternion.h>
@@ -31,9 +31,9 @@ public:
         odom_pub_ = this->create_publisher<nav_msgs::msg::Odometry>("odom", 10);
         tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 
-        // 2. Subscriber cmd_vel để lái xe (Thay cho /joy)
-        cmd_vel_sub_ = this->create_subscription<geometry_msgs::msg::Twist>(
-            "cmd_vel", 10, std::bind(&ArduinoBridgeNode::cmd_vel_callback, this, std::placeholders::_1));
+        // 2. Subscriber Joy để lái xe
+        joy_sub_ = this->create_subscription<sensor_msgs::msg::Joy>(
+            "/joy", 10, std::bind(&ArduinoBridgeNode::joy_callback, this, std::placeholders::_1));
 
         // 3. Thông số vật lý xe
         double PULSES_PER_REV = 330.0; 
@@ -45,12 +45,7 @@ public:
 
         // 4. Timer đọc Odom 100Hz liên tục
         timer_ = this->create_wall_timer(10ms, std::bind(&ArduinoBridgeNode::read_serial_and_publish, this));
-        
-        // 5. Watchdog kiểm tra timeout lệnh (tự phanh sau 0.5s giống logic python)
-        last_twist_time_ = this->get_clock()->now();
-        watchdog_timer_ = this->create_wall_timer(100ms, std::bind(&ArduinoBridgeNode::watchdog_check, this));
-        
-        RCLCPP_INFO(this->get_logger(), "Đã khởi động Arduino Bridge Node (Full-Duplex R/W) tích hợp cmd_vel!");
+        RCLCPP_INFO(this->get_logger(), "Đã khởi động Arduino Bridge Node (Full-Duplex R/W)!");
     }
 
     ~ArduinoBridgeNode() {
@@ -59,26 +54,37 @@ public:
     }
 
 private:
-    // --- GỬI LỆNH ĐIỀU KHIỂN TỪ TOPIC CMD_VEL XUỐNG ARDUINO ---
-    void cmd_vel_callback(const geometry_msgs::msg::Twist::SharedPtr msg) {
-        double lin = msg->linear.x;
-        double ang = msg->angular.z;
-        
-        double linear_threshold = 0.05;
-        double angular_threshold = 0.05;
+    // --- GỬI LỆNH ĐIỀU KHIỂN TỪ TAY CẦM XUỐNG ARDUINO ---
+    void joy_callback(const sensor_msgs::msg::Joy::SharedPtr msg) {
+        // Xử lý nút bấm (Buttons)
+        if (msg->buttons.size() > 8) {
+            if (!last_buttons_.empty()) {
+                if (msg->buttons[0] == 1 && last_buttons_[0] == 0) send_serial_char('T');
+                if (msg->buttons[1] == 1 && last_buttons_[1] == 0) send_serial_char('S');
+                if (msg->buttons[2] == 1 && last_buttons_[2] == 0) send_serial_char('Y');
+                if (msg->buttons[3] == 1 && last_buttons_[3] == 0) send_serial_char('X');
+                if (msg->buttons[5] == 1 && last_buttons_[5] == 0) send_serial_char('E');
+                if (msg->buttons[6] == 1 && last_buttons_[6] == 0) send_serial_char('Q');
+                if (msg->buttons[7] == 1 && last_buttons_[7] == 0) send_serial_char('D');
+                if (msg->buttons[8] == 1 && last_buttons_[8] == 0) send_serial_char('A');
+            }
+        }
 
-        char cmd = 'S';
-        // Ưu tiên: nếu có lệnh tiến/lùi thì đi, ngược lại mới quay
-        if (lin > linear_threshold) {
-            cmd = 'F';
-        } else if (lin < -linear_threshold) {
-            cmd = 'B';
-        } else if (ang > angular_threshold) {
-            cmd = 'L';
-        } else if (ang < -angular_threshold) {
-            cmd = 'R';
-        } else {
-            cmd = 'S';
+        // Xử lý cần gạt (Axes) — GIỐNG HỆT cmd_vel_to_serial.py (đã chạy OK):
+        // ưu tiên cố định F > B > L > R, ngưỡng 0.1; chỉ gửi S khi đang chạy rồi thả cần.
+        char cmd = last_cmd_;
+        if (msg->axes.size() > 2) {
+            if (msg->axes[1] > 0.1) {
+                cmd = 'F';
+            } else if (msg->axes[1] < -0.1) {
+                cmd = 'B';
+            } else if (msg->axes[2] > 0.1) {
+                cmd = 'L';
+            } else if (msg->axes[2] < -0.1) {
+                cmd = 'R';
+            } else if (last_cmd_ == 'F' || last_cmd_ == 'B' || last_cmd_ == 'L' || last_cmd_ == 'R') {
+                cmd = 'S'; // Thả cần analog -> tự động phanh
+            }
         }
 
         if (cmd != last_cmd_) {
@@ -86,17 +92,7 @@ private:
             last_cmd_ = cmd;
         }
 
-        // Cập nhật thời gian nhận lệnh cho watchdog
-        last_twist_time_ = this->get_clock()->now();
-    }
-
-    void watchdog_check() {
-        // Nếu quá 0.5s không nhận được lệnh thì tự phanh
-        double elapsed = (this->get_clock()->now() - last_twist_time_).seconds();
-        if (elapsed > 0.5 && last_cmd_ != 'S') {
-            send_serial_char('S');
-            last_cmd_ = 'S';
-        }
+        last_buttons_ = msg->buttons;
     }
 
     void send_serial_char(char c) {
@@ -274,17 +270,17 @@ private:
     int reconnect_ticks_ = 0;
     std::string serial_buffer_;
     char last_cmd_;
+    std::vector<int32_t> last_buttons_;
 
     rclcpp::TimerBase::SharedPtr timer_;
-    rclcpp::TimerBase::SharedPtr watchdog_timer_;
     rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_pub_;
-    rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_sub_;
+    rclcpp::Subscription<sensor_msgs::msg::Joy>::SharedPtr joy_sub_;
     std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
 
     double x_, y_, theta_;
     long prev_pulse_L_, prev_pulse_R_;
     bool first_read_;
-    rclcpp::Time last_time_, last_twist_time_;
+    rclcpp::Time last_time_;
     double dist_per_pulse_, wheel_base_;
 };
 

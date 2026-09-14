@@ -32,6 +32,13 @@ int DIR_L = 0;
 int DIR_R = 0;
 int HM_MODE = 0;
 
+// --- CHỐNG NHIỄU EMI: THỜI GIAN CHẾT (DEAD-TIME) TRƯỚC KHI ĐẢO CHIỀU RELAY ---
+// Động cơ BẮT BUỘC phải dừng hẳn (DAC = 0V) và chờ từ trường/quán tính suy giảm
+// TRƯỚC KHI kích relay đảo cực. Nếu đảo cực lúc động cơ còn quay, suất điện động
+// của động cơ cộng dồn với nguồn -> tia lửa hồ quang cực lớn -> phát EMI
+// đánh sập cổng USB của Pi 5.
+#define MOTOR_STOP_BEFORE_REVERSE_MS 150UL
+
 volatile long total_pulses_L = 0;
 volatile long total_pulses_R = 0;
 
@@ -139,13 +146,28 @@ void intrupt_R(){
 void BRAKE(){
     digitalWrite(PIN_BRAKE_L, LOW);
     digitalWrite(PIN_BRAKE_R, LOW);
+
+    // QUAN TRỌNG: trước đây chỉ gán biến mà KHÔNG ghi ra DAC, nên động cơ
+    // vẫn được cấp điện đầy trong suốt quá trình kích relay -> đóng/cắt dưới tải
+    // -> hồ quang lớn -> EMI. Phải ghi 0V ra DAC NGAY.
     dac_out_L = 0;
     dac_out_R = 0;
+    dac_R.setVoltage(0, false);
+    dac_L.setVoltage(0, false);
+    last_dac_L = 0;
+    last_dac_R = 0;
 }
 
 void RE_BRAKE(){
     digitalWrite(PIN_BRAKE_L, HIGH);
     digitalWrite(PIN_BRAKE_R, HIGH);
+}
+
+// Ngắt điện động cơ (DAC = 0) rồi chờ một khoảng để động cơ/dòng điện suy giảm
+// TRƯỚC KHI cho relay đảo chiều. Đây là "dead-time" chống hồ quang/EMI.
+void STOP_BEFORE_DIR_CHANGE(){
+    BRAKE();
+    DELAY(MOTOR_STOP_BEFORE_REVERSE_MS);
 }
 
 void DI_CHUYEN (float v_L, float v_R){
@@ -155,7 +177,7 @@ void DI_CHUYEN (float v_L, float v_R){
 }
 
 void DI_TIEN(float v_L, float v_R){
-    BRAKE();
+    STOP_BEFORE_DIR_CHANGE();
     if (DIR_L == 1){ digitalWrite(PIN_DIR_L, HIGH); DELAY(1500); digitalWrite(PIN_DIR_L, LOW); DELAY(200); }
     if (DIR_R == 1){ digitalWrite(PIN_DIR_R, HIGH); DELAY(1500); digitalWrite(PIN_DIR_R, LOW); DELAY(200); }
     RE_BRAKE();
@@ -164,7 +186,7 @@ void DI_TIEN(float v_L, float v_R){
 }
 
 void DI_LUI(float v_L, float v_R){
-    BRAKE();
+    STOP_BEFORE_DIR_CHANGE();
     if (DIR_L == 0){ digitalWrite(PIN_DIR_L, HIGH); DELAY(1500); digitalWrite(PIN_DIR_L, LOW); DELAY(200); }
     if (DIR_R == 0){ digitalWrite(PIN_DIR_R, HIGH); DELAY(1500); digitalWrite(PIN_DIR_R, LOW); DELAY(200); }
     RE_BRAKE();
@@ -173,7 +195,7 @@ void DI_LUI(float v_L, float v_R){
 }
 
 void TURN_LEFT(float v){
-    BRAKE();
+    STOP_BEFORE_DIR_CHANGE();
     if (DIR_L == 0){ digitalWrite(PIN_DIR_L, HIGH); DELAY(1500); digitalWrite(PIN_DIR_L, LOW); DELAY(200); }
     if (DIR_R == 1){ digitalWrite(PIN_DIR_R, HIGH); DELAY(1500); digitalWrite(PIN_DIR_R, LOW); DELAY(200); }
     RE_BRAKE();
@@ -182,7 +204,7 @@ void TURN_LEFT(float v){
 }
 
 void TURN_RIGHT(float v){
-    BRAKE();
+    STOP_BEFORE_DIR_CHANGE();
     if (DIR_L == 1){ digitalWrite(PIN_DIR_L, HIGH); DELAY(1500); digitalWrite(PIN_DIR_L, LOW); DELAY(200); }
     if (DIR_R == 0){ digitalWrite(PIN_DIR_R, HIGH); DELAY(1500); digitalWrite(PIN_DIR_R, LOW); DELAY(200); }
     RE_BRAKE();

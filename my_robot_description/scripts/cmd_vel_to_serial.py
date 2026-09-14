@@ -97,6 +97,12 @@ class CmdVelToSerialNode(Node):
 
     def read_serial_data(self):
         if self.serial_port is None:
+            # Cổng chưa mở (Arduino vừa bị ngắt do EMI/re-enumerate).
+            # Thử mở lại, tối đa 1 lần/giây để không spam.
+            now = time.monotonic()
+            if now - self._last_reconnect_time > 1.0:
+                self._last_reconnect_time = now
+                self.connect_serial()
             return
         try:
             if self.serial_port.in_waiting > 0:

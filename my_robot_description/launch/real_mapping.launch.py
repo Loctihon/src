@@ -16,6 +16,7 @@ def generate_launch_description():
     robot_description_config = xacro.process_file(xacro_file)
     robot_urdf = robot_description_config.toxml()
     laser_filter_params = os.path.join(share_dir, 'config', 'laser_filter.yaml')
+    slam_params_file = os.path.join(share_dir, 'config', 'mapper_params_online_async.yaml')
     declare_use_sim_time_cmd = DeclareLaunchArgument(
         'use_sim_time',
         default_value='false',
@@ -61,46 +62,84 @@ def generate_launch_description():
         arguments=['-0.46', '0.0', '0.15', '0', '0', '0', 'base_link', 'laser_frame']
     )
 
-    laser_filter_node = Node(
-    package='laser_filters',
-    executable='scan_to_scan_filter_chain',
-    name='scan_to_scan_filter_chain',
-    parameters=[laser_filter_params],
-    output='screen'
-    )   
+    # laser_filter_node = Node(
+    # package='laser_filters',
+    # executable='scan_to_scan_filter_chain',
+    # name='scan_to_scan_filter_chain',
+    # parameters=[laser_filter_params],
+    # output='screen'
+    # )   
 
     # 3. Trình điều khiển RPLidar C1
-    rplidar_node = Node(
+
+    rplidar_1_node = Node(
         package='sllidar_ros2',
         executable='sllidar_node',
-        name='sllidar_node',
+        name='sllidar_1',
         parameters=[{
             'channel_type': 'serial',
-            'serial_port': '/dev/ttyUSB0',
-            'serial_baudrate': 460800, # Baudrate chuẩn của LiDAR C1
-            'frame_id': 'laser_frame',
+            'serial_port': '/dev/ttyUSB0', # LiDAR trước
+            'serial_baudrate': 460800,
+            'frame_id': 'laser_1_frame',
             'inverted': False,
-            'angle_compensate': True
+            'angle_compensate': True,
+        }],
+        remappings=[('scan', 'scan_1')],
+        output='screen'
+    )
+
+    rplidar_2_node = Node(
+        package='sllidar_ros2',
+        executable='sllidar_node',
+        name='sllidar_2',
+        parameters=[{
+            'channel_type': 'serial',
+            'serial_port': '/dev/ttyUSB1', # LiDAR sau
+            'serial_baudrate': 460800,
+            'frame_id': 'laser_2_frame',
+            'inverted': False,
+            'angle_compensate': True,
+        }],
+        remappings=[('scan', 'scan_2')],
+        output='screen'
+    )
+
+    scan_merger_node = Node(
+        package='ira_laser_tools',
+        executable='laserscan_multi_merger',
+        name='laserscan_multi_merger',
+        parameters=[{
+            'use_sim_time': False,
+            'destination_frame': 'base_footprint', 
+            'cloud_destination_topic': '/merged_cloud',
+            'scan_destination_topic': '/scan',
+            'laserscan_topics': '/scan_1 /scan_2',
+            'angle_min': -3.14159,
+            'angle_max': 3.14159,
+            'angle_increment': 0.0058, 
+            'scan_time': 0.2,
+            'range_min': 0.15,
+            'range_max': 20.0
         }],
         output='screen'
     )
 
     # 4. Thuật toán giả lập Odometry từ tia Laser (thay thế cho encoder bánh xe)
-    # rf2o_node = Node(
-    #     package='rf2o_laser_odometry',
-    #     executable='rf2o_laser_odometry_node',
-    #     name='rf2o_laser_odometry',
-    #     output='screen',
-    #     parameters=[{
-    #         'laser_scan_topic' : '/scan',
-    #         'odom_topic' : '/odom',
-    #         'publish_tf' : True,
-    #         'base_frame_id' : 'base_footprint',
-    #         'odom_frame_id' : 'odom',
-    #         'init_pose_from_topic' : '',
-    #         'freq' : 20.0
-    #     }]
-    # )
+    rf2o_node = Node(
+        package='rf2o_laser_odometry',
+        executable='rf2o_laser_odometry_node',
+        name='rf2o_laser_odometry',
+        output='screen',
+        parameters=[{
+            'laser_scan_topic' : '/scan_1',
+            'odom_topic' : '/odom',
+            'publish_tf' : True,
+            'base_frame_id' : 'base_footprint',
+            'odom_frame_id' : 'odom',
+            'init_pose_from_topic' : '',
+            'freq' : 20.0
+        }]
+    )
 
     # 5. Khởi động SLAM Toolbox (Tắt use_sim_time vì đang chạy thực tế)
     slam_toolbox_node = IncludeLaunchDescription(
@@ -111,7 +150,8 @@ def generate_launch_description():
                 'online_async_launch.py'
             ])
         ]),
-        launch_arguments=[('use_sim_time', 'false')]
+        launch_arguments=[('use_sim_time', 'false'),
+                        ('slam_params_file', slam_params_file)]
     )
 
     # 6. Khởi động giao diện RViz2
@@ -127,9 +167,11 @@ def generate_launch_description():
         declare_use_sim_time_cmd,
         robot_state_publisher_node,
         joint_state_publisher_node,
-        static_tf,
-        rplidar_node,
-        hall_reader_node,
-        slam_toolbox_node,
+        # static_tf,
+        rplidar_1_node,
+        rplidar_2_node,
+        scan_merger_node,
+        rf2o_node,
+        slam_toolbox_node, 
         rviz_node,
     ])
